@@ -1,0 +1,85 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdkVersion COMPILE_SDK_VERSION as int
+    buildToolsVersion BUILD_TOOLS_VERSION
+
+    defaultConfig {
+        applicationId "ai.fedml.android"
+        minSdkVersion MIN_SDK_VERSION as int
+        targetSdkVersion TARGET_SDK_VERSION as int
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation project(':fedmlsdk')
+    implementation 'androidx.appcompat:appcompat:1.2.0'
+    implementation 'com.google.android.material:material:1.2.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
+    implementation 'androidx.navigation:navigation-fragment:2.3.2'
+    implementation 'androidx.navigation:navigation-ui:2.3.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.2'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
+    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
+
+    // room
+    implementation "androidx.room:room-runtime:$room_version"
+    annotationProcessor "androidx.room:room-compiler:$room_version"
+    // optional - RxJava support for Room
+    implementation "androidx.room:room-rxjava2:$room_version"
+    // optional - Guava support for Room, including Optional and ListenableFuture
+    implementation "androidx.room:room-guava:$room_version"
+    // Test helpers
+    testImplementation "androidx.room:room-testing:$room_version"
+
+    testImplementation 'junit:junit:4.13.1'
+    implementation project(':fedmlsdk')
+
+    // butterknife
+    implementation 'com.jakewharton:butterknife:10.2.3'
+    annotationProcessor 'com.jakewharton:butterknife-compiler:10.2.3'
+
+    // Deeplearning4J
+    implementation (group: 'org.deeplearning4j', name: 'deeplearning4j-core', version: deeplearning4j_version) {
+        exclude group: 'org.bytedeco', module: 'opencv-platform'
+        exclude group: 'org.bytedeco', module: 'leptonica-platform'
+        exclude group: 'org.bytedeco', module: 'hdf5-platform'
+    }
+    implementation group: 'org.nd4j', name: 'nd4j-native', version: nd4j_version
+    implementation group: 'org.nd4j', name: 'nd4j-native', version: nd4j_version, classifier: "android-arm"
+    implementation group: 'org.nd4j', name: 'nd4j-native', version: nd4j_version, classifier: "android-arm64"
+    implementation group: 'org.nd4j', name: 'nd4j-native', version: nd4j_version, classifier: "android-x86"
+    implementation group: 'org.nd4j', name: 'nd4j-native', version: nd4j_version, classifier: "android-x86_64"
+    implementation group: 'org.bytedeco', name: 'openblas', version: openblas_version
+    implementation group: 'org.bytedeco', name: 'openblas', version: openblas_version, classifier: "android-arm"
+    implementation group: 'org.bytedeco', name: 'openblas', version: openblas_version, classifier: "android-arm64"
+    implementation group: 'org.bytedeco', name: 'openblas', version: openblas_version, classifier: "android-x86"
+    implementation group: 'org.bytedeco', name: 'openblas', version: openblas_version, classifier: "android-x86_64"
+    implementation group: 'org.bytedeco', name: 'opencv', version: opencv_version
+    implementation group: 'org.bytedeco', name: 'opencv', version: opencv_version, classifier: "android-arm"
+    implementation group: 'org.bytedeco', name: 'opencv', version: opencv_version, classifier: "android-arm64"
+    implementation group: 'org.bytedeco', name: 'opencv', version: opencv_version, classifier: "android-x86"
+    implementation group: 'org.bytedeco', name: 'opencv', version: opencv_version, classifier: "android-x86_64"
+    implementation group: 'org.bytedeco', name: 'leptonica', version: leptonica_version
+    implementation group: 'org.bytedeco', name: 'leptonica', version: leptonica_version, classifier: "android-arm"
+    implementation group: 'org.bytedeco', name: 'leptonica', version: leptonica_version, classifier: "android-arm64"
+    implementation group: 'org.bytedeco', name: 'leptonica', version: leptonica_version, classifier: "android-x86"
+    implementation group: 'org.bytedeco', name: 'leptonica', version: leptonica_version, classifier: "android-x86_64"
+}
