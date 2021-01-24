@@ -87,3 +87,5 @@ lint/tmp/
 /.idea/
 /gradlew
 /gradlew.bat
+app/src/main/java/ai/fedml/.DS_Store
+.DS_Store
