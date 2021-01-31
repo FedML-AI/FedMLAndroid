@@ -41,12 +41,7 @@ dependencies {
     implementation group: 'com.squareup.retrofit2', name: 'converter-gson', version: retrofit_version
     implementation group: 'com.squareup.okhttp3', name: 'okhttp', version: okhttp_version
     implementation group: 'com.squareup.okio', name: 'okio', version: okio_version
-    compileOnly "org.projectlombok:lombok:$lombok_version"
-    annotationProcessor "org.projectlombok:lombok:$lombok_version"
-    testAnnotationProcessor "org.projectlombok:lombok:$lombok_version"
-    implementation group: 'org.nd4j', name: 'guava', version: nd4j_version
-    implementation "com.google.dagger:dagger:$dagger_version"
-    annotationProcessor "com.google.dagger:dagger-compiler:$dagger_version"
     implementation group: 'org.eclipse.paho', name: 'org.eclipse.paho.client.mqttv3', version: paho_version
     implementation "com.tencent.mars:mars-xlog:$xlog_version"
+    implementation group: 'net.lingala.zip4j', name: 'zip4j', version: zip4j_version
 }

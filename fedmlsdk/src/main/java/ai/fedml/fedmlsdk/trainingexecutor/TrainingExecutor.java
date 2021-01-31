@@ -1,9 +1,7 @@
 package ai.fedml.fedmlsdk.trainingexecutor;
 
+import android.text.TextUtils;
 import android.util.Log;
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
@@ -15,13 +13,16 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
-import java.io.InputStreamReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
-import ai.fedml.fedmlsdk.FedMlTaskListener;
+import ai.fedml.fedmlsdk.listeners.OnDataSetPretreatedListener;
+import ai.fedml.fedmlsdk.listeners.OnRegisterListener;
+import ai.fedml.fedmlsdk.utils.CompressUtils;
 import ai.fedml.fedmlsdk.utils.DeviceUtils;
 import ai.fedml.fedmlsdk.utils.StorageUtils;
 import androidx.annotation.NonNull;
-import lombok.SneakyThrows;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
@@ -36,85 +37,57 @@ public class TrainingExecutor {
     private static final String TAG = "TrainingExecutor";
     private static final int QOS = 2;
     private final ITrainingExecutorService executorService;
-    private final Gson gson;
     private final MemoryPersistence persistence = new MemoryPersistence();
     private final String broker;
     private MqttClient client;
     private String executorId;
     private String executorTopic = "executorTopic";
-    private ExecutorResponse.TrainingTaskParam trainingTaskParam;
+    private TrainingTaskParam trainingTaskParam;
     private final MqttConnectOptions connOpts;
-    private FedMlTaskListener mFedMlTaskListener;
+    private OnRegisterListener onRegisterListener;
 
     public TrainingExecutor(@NonNull final String baseUrl, @NonNull final String broker) {
-        Retrofit retrofit = new Retrofit.Builder()
+        executorService = new Retrofit.Builder()
                 .baseUrl(baseUrl)
                 .addConverterFactory(GsonConverterFactory.create())
-                .build();
-        executorService = retrofit.create(ITrainingExecutorService.class);
-        gson = new GsonBuilder().create();
+                .build().create(ITrainingExecutorService.class);
         this.broker = broker;
+        // EMQX Connect Options
         connOpts = new MqttConnectOptions();
         connOpts.setUserName("emqx_fedml_mobile");
         connOpts.setPassword("fedml_password".toCharArray());
-        // 保留会话
         connOpts.setCleanSession(true);
     }
 
     public void init() {
-        registerDevice(DeviceInfo.builder().deviceId(DeviceUtils.getDeviceId()).build());
         initMqttClient();
     }
 
-    public void setFedMlTaskListener(FedMlTaskListener listener) {
-        mFedMlTaskListener = listener;
-    }
-
-    public void registerDevice(@NonNull DeviceInfo deviceInfo) {
+    public void registerDevice(final OnRegisterListener listener) {
+        onRegisterListener = listener;
+        final DeviceInfo deviceInfo = DeviceInfo.builder().deviceId(DeviceUtils.getsDeviceId()).build();
         Call<ExecutorResponse> call = executorService.registerDevice(deviceInfo.getDeviceId());
         call.enqueue(new Callback<ExecutorResponse>() {
             @Override
             public void onResponse(@NotNull Call<ExecutorResponse> call, @NotNull Response<ExecutorResponse> response) {
                 ExecutorResponse executorResponse = response.body();
+                Log.d(TAG, "onResponse: " + executorResponse);
                 if (executorResponse != null) {
                     executorId = executorResponse.getExecutorId();
                     executorTopic = executorResponse.getExecutorTopic();
                     trainingTaskParam = executorResponse.getTrainingTaskArgs();
-                    if (mFedMlTaskListener != null) {
-                        mFedMlTaskListener.onReceive(trainingTaskParam);
+                    if (onRegisterListener != null) {
+                        onRegisterListener.onRegisterReceived(executorId, trainingTaskParam);
                     }
                 }
-                Log.d(TAG, "onResponse: " + executorResponse);
             }
 
             @Override
             public void onFailure(@NotNull Call<ExecutorResponse> call, @NotNull Throwable t) {
                 Log.w(TAG, "onFailure: ", t);
-                if (mFedMlTaskListener != null) {
-                    mFedMlTaskListener.onReceive(null);
+                if (onRegisterListener != null) {
+                    onRegisterListener.onRegisterReceived(null, null);
                 }
-            }
-        });
-    }
-
-    public void onLine(DeviceInfo deviceInfo) {
-        final String json = gson.toJson(deviceInfo);
-        Log.d(TAG, "onLine: " + json);
-        MediaType mediaType = MediaType.parse("application/json");
-        RequestBody req = RequestBody.create(json, mediaType);
-        Call<ResponseBody> call = executorService.deviceOnLine(req);
-        call.enqueue(new Callback<ResponseBody>() {
-            @Override
-            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
-                DeviceOnLineResponse onLineResponse = gson.fromJson(new InputStreamReader(response.body().byteStream()),
-                        DeviceOnLineResponse.class);
-                Log.d(TAG, "onResponse: " + onLineResponse);
-                executorTopic = onLineResponse.getExecutorTopic();
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
-                Log.w(TAG, "onFailure: ", t);
             }
         });
     }
@@ -125,10 +98,14 @@ public class TrainingExecutor {
         MultipartBody.Part filePart = MultipartBody.Part.createFormData("model_file", fileName, requestFile);
         Call<ResponseBody> call = executorService.upload(nameReq, filePart);
         call.enqueue(new Callback<ResponseBody>() {
-            @SneakyThrows
+
             @Override
             public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
-                Log.d(TAG, "onResponse: " + response.body().string());
+                try {
+                    Log.d(TAG, "onResponse: " + response.body().string());
+                } catch (IOException e) {
+                    Log.e(TAG, "onResponse: parse failed!", e);
+                }
             }
 
             @Override
@@ -138,14 +115,38 @@ public class TrainingExecutor {
         });
     }
 
-    public void downloadFile(@NonNull final String fileName, @NonNull final String url) {
+    public void downloadUnzipDataSet(@NonNull final String dataSetName, @NonNull final String fileName,
+                                     @NonNull final String url, @NonNull final OnDataSetPretreatedListener listener) {
         Call<ResponseBody> call = executorService.downloadFile(url);
         call.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
                 Log.d(TAG, "onResponse: " + response.isSuccessful());
                 assert response.body() != null;
-                StorageUtils.saveToLabelDataPath(response.body().byteStream(), fileName);
+                // download and unzip data from server
+                final String zipFilePath = StorageUtils.saveToLabelDataPath(response.body().byteStream(), fileName);
+                if (listener != null) {
+                    listener.onDataSetUnzip(zipFilePath);
+                }
+                if (TextUtils.isEmpty(zipFilePath)) {
+                    Log.e(TAG, "onResponse: saveToLabelDataPath failed!");
+                    return;
+                }
+                try {
+                    final String destDir;
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        destDir = Paths.get(StorageUtils.getLabelDataPath(), dataSetName).toString();
+                    } else {
+                        destDir = StorageUtils.getLabelDataPath() + File.separator + dataSetName;
+                    }
+                    CompressUtils.unzip(zipFilePath, destDir);
+                    new File(zipFilePath).delete();
+                    if (listener != null) {
+                        listener.onDataSetUnzip(destDir);
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, "onResponse: unzip failed!", e);
+                }
             }
 
             @Override
@@ -157,10 +158,9 @@ public class TrainingExecutor {
 
     private void initMqttClient() {
         try {
-            client = new MqttClient(broker, DeviceUtils.getDeviceId(), persistence);
-            // 设置回调
+            client = new MqttClient(broker, DeviceUtils.getsDeviceId(), persistence);
             client.setCallback(new OnMessageCallback());
-            // 建立连接
+            // connect
             Log.d(TAG, "Connecting to broker: " + broker);
             client.connect(connOpts);
             client.subscribe("device");
@@ -183,7 +183,6 @@ public class TrainingExecutor {
     }
 
     public void sendMessage(@NonNull String msg) {
-        // 消息发布所需参数
         MqttMessage message = new MqttMessage(msg.getBytes());
         message.setQos(QOS);
         try {
@@ -195,8 +194,7 @@ public class TrainingExecutor {
 
     public class OnMessageCallback implements MqttCallback {
         public void connectionLost(Throwable cause) {
-            // 连接丢失后，一般在这里面进行重连
-            Log.d(TAG, "连接断开，可以做重连");
+            Log.d(TAG, "connection Lost can re-connect!");
             try {
                 client.connect(connOpts);
                 client.subscribe("device");
@@ -207,10 +205,9 @@ public class TrainingExecutor {
         }
 
         public void messageArrived(String topic, MqttMessage message) throws Exception {
-            // subscribe后得到的消息会执行到这里面
-            Log.d(TAG, "接收消息主题:" + topic);
-            Log.d(TAG, "接收消息Qos:" + message.getQos());
-            Log.d(TAG, "接收消息内容:" + new String(message.getPayload()));
+            Log.d(TAG, "messageArrived:" + topic);
+            Log.d(TAG, "messageArrived Qos:" + message.getQos());
+            Log.d(TAG, "messageArrived Content:" + new String(message.getPayload()));
         }
 
         public void deliveryComplete(IMqttDeliveryToken token) {

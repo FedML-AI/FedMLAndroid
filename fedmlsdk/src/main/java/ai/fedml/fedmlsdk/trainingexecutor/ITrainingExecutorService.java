@@ -20,10 +20,6 @@ public interface ITrainingExecutorService {
     @FormUrlEncoded
     Call<ExecutorResponse> registerDevice(@Field("device_id") String deviceId);
 
-    @POST("api/deviceOnLine")
-    @Headers("Authorization: application/json")
-    Call<ResponseBody> deviceOnLine(@Body RequestBody req);
-
     @POST("api/upload")
     @Multipart
     Call<ResponseBody> upload(@Part("filename") RequestBody filename, @Part MultipartBody.Part file);

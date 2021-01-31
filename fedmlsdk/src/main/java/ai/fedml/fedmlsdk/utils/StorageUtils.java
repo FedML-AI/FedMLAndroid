@@ -4,9 +4,6 @@ import android.content.Context;
 import android.os.StatFs;
 import android.util.Log;
 
-
-import org.nd4j.shade.guava.io.Files;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -16,13 +13,13 @@ import java.io.InputStream;
 
 import ai.fedml.fedmlsdk.ContextHolder;
 import androidx.annotation.NonNull;
-import lombok.Cleanup;
 
 public class StorageUtils {
+    private static final String TAG = "StorageUtils";
     private static final String LOG_DIR = "logs";
     private static final String MODEL_DIR = "models";
     private static final String LABEL_DATA_DIR = "labeldata";
-    public static final int BUFFER_SIZE = 8192;
+    private static final int BUFFER_SIZE = 8192;
 
     /**
      * get dir Available size
@@ -74,63 +71,19 @@ public class StorageUtils {
     }
 
     /**
-     * save data to Directory
-     *
-     * @param data     data
-     * @param fileName FileName,relative the Label Data Path
-     * @return
-     */
-    public static boolean saveToLabelDataPath(byte[] data, String fileName) {
-        BufferedOutputStream bos = null;
-        final String dataDir = getLabelDataPath();
-        final String filePath = Files.simplifyPath(dataDir + File.separator + fileName);
-        File destFile = new File(filePath);
-        try {
-            Files.createParentDirs(destFile);
-            Files.write(data, destFile);
-            return true;
-        } catch (IOException e) {
-            Log.e("StorageUtils", "saveToLabelDataPath", e);
-        }
-        return false;
-    }
-
-    /**
      * save data to Label Data Directory
      *
      * @param data     data
      * @param fileName FileName,relative the Label Data Path
-     * @return save success
+     * @return filePath if success return the file path, or null.
      */
-    public static boolean saveToLabelDataPath(@NonNull InputStream data, String fileName) {
+    public static String saveToLabelDataPath(@NonNull InputStream data, String fileName) {
         BufferedOutputStream bos = null;
         final String dataDir = getLabelDataPath();
-        final String filePath = Files.simplifyPath(dataDir + File.separator + fileName);
+        final String filePath = dataDir + File.separator + fileName;
         Log.d("StorageUtils", "saveToLabelDataPath: " + filePath);
         try {
             writeToFile(data, filePath);
-            return true;
-        } catch (IOException e) {
-            Log.e("StorageUtils", "saveToLabelDataPath", e);
-        }
-        return false;
-    }
-
-    /**
-     * save data to Model Directory
-     *
-     * @param data     data
-     * @param fileName FileName,relative the Label Data Path
-     * @return
-     */
-    public static String saveToModelPath(byte[] data, String fileName) {
-        BufferedOutputStream bos = null;
-        final String dataDir = getModelPath();
-        final String filePath = Files.simplifyPath(dataDir + File.separator + fileName);
-        File destFile = new File(filePath);
-        try {
-            Files.createParentDirs(destFile);
-            Files.write(data, destFile);
             return filePath;
         } catch (IOException e) {
             Log.e("StorageUtils", "saveToLabelDataPath", e);
@@ -140,16 +93,32 @@ public class StorageUtils {
 
     private static void writeToFile(@NonNull InputStream data, @NonNull String destFilePath) throws IOException {
         File destFile = new File(destFilePath);
-        Files.createParentDirs(destFile);
-        @Cleanup
-        BufferedInputStream bis = new BufferedInputStream(data);
-        @Cleanup
-        BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destFile));
-        int bytesRead = 0;
-        byte[] buffer = new byte[BUFFER_SIZE];
-        while ((bytesRead = bis.read(buffer, 0, 8192)) != -1) {
-            bos.write(buffer, 0, bytesRead);
+        createParentDirs(destFile);
+        try (BufferedInputStream bis = new BufferedInputStream(data);
+             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(new File(destFilePath)))) {
+            int bytesRead = 0;
+            byte[] buffer = new byte[BUFFER_SIZE];
+            while ((bytesRead = bis.read(buffer, 0, BUFFER_SIZE)) != -1) {
+                bos.write(buffer, 0, bytesRead);
+            }
+            bos.flush();
+        } catch (IOException e) {
+            Log.e(TAG, "writeToFile: ", e);
+            throw e;
         }
-        bos.flush();
+    }
+
+    private static void createParentDirs(File file) throws IOException {
+        if (file == null) {
+            return;
+        }
+        File parent = file.getCanonicalFile().getParentFile();
+        if (parent == null) {
+            return;
+        }
+        parent.mkdirs();
+        if (!parent.isDirectory()) {
+            throw new IOException("Unable to create parent directories of " + file);
+        }
     }
 }
